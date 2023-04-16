@@ -1,7 +1,5 @@
-import { Bot, Filter } from "grammy";
+import { Bot } from "grammy";
 import * as DeepL from "deepl-node";
-import * as cld from "cld";
-import { VALID_LANGUAGES } from "./constants";
 import "dotenv/config";
 
 const telegramApiKey = process.env.TELEGRAM_API_KEY;
@@ -15,10 +13,20 @@ if (deeplApiKey == null) {
 const bot = new Bot(telegramApiKey);
 const deeplTranslator = new DeepL.Translator(deeplApiKey);
 
-async function handleNewGeneralChannelMessage(message: string): Promise<string> {
+// catches up on messages when bot it turned back on. This automatically skips to most recent
+const resetURL = `https://api.telegram.org/bot${telegramApiKey}/getUpdates?offset=-1`;
+async function resetBot() {
+  const response = await fetch(resetURL);
+  const jsonData = await response.json();
+  console.log(jsonData);
+}
+
+async function handleNewMessage(
+  message: string,
+  detectLanguage: (message: string) => string | null
+): Promise<string> {
   try {
-    const highestScoringLanguage = await detectHighestScoringValidLanguage(message);
-    const languageCode = highestScoringLanguage.code;
+    const languageCode = detectLanguage(message);
     if (languageCode === "en") {
       const textResult = await deeplTranslator.translateText(message, "en", "ru");
       return textResult.text;
@@ -37,31 +45,39 @@ async function handleNewGeneralChannelMessage(message: string): Promise<string> 
   }
 }
 
-async function detectHighestScoringValidLanguage(messageContent: string) {
-  const detectedLanguages = await cld.detect(messageContent);
-  const highestScoringLanguage = getHighestScoringLanguage(detectedLanguages.languages);
-  const languageCode = highestScoringLanguage.code;
-  if (!VALID_LANGUAGES.includes(languageCode)) {
-    throw new Error(`detected language not in ${VALID_LANGUAGES}`);
-  }
-  return highestScoringLanguage;
-}
+const cyrillicMatcher = /\p{sc=Cyrillic}/gu;
+const latinMatcher = /\p{sc=Latin}/gu;
+function detectLanguage(message: string): "en" | "ru" | null {
+  const cyrillicResults = message.match(cyrillicMatcher);
+  const latinResults = message.match(latinMatcher);
 
-function getHighestScoringLanguage(detectedLanguages: Array<cld.Language>) {
-  if (detectedLanguages.length <= 0) {
-    throw new Error("no detected languages from cld");
+  if (cyrillicResults != null && latinResults == null) {
+    return "ru";
   }
-  let highestScoringLanguage = detectedLanguages[0];
-  for (let i = 1; i < detectedLanguages.length; i++) {
-    if (highestScoringLanguage.score < detectedLanguages[i].score) {
-      highestScoringLanguage = detectedLanguages[i];
+
+  if (cyrillicResults == null && latinResults != null) {
+    return "en";
+  }
+
+  if (cyrillicResults != null && latinResults != null) {
+    if (cyrillicResults.length >= latinResults.length) {
+      return "ru";
     }
+    return "en";
   }
-  return highestScoringLanguage;
+  return null;
 }
 
-bot.on("message:text", async (context) => {
-  const translatedMessage = await handleNewGeneralChannelMessage(context.message.text);
-  context.reply(translatedMessage);
-});
-bot.start();
+async function main() {
+  await resetBot();
+  bot.on("message:text", async (context) => {
+    const translatedMessage = await handleNewMessage(
+      context.message.text,
+      detectLanguage
+    );
+    context.reply(translatedMessage);
+  });
+  bot.start();
+}
+
+main();
