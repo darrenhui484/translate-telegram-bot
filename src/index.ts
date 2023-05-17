@@ -1,6 +1,7 @@
 import { Bot } from "grammy";
 import * as DeepL from "deepl-node";
 import "dotenv/config";
+import express from "express";
 
 const telegramApiKey = process.env.TELEGRAM_API_KEY;
 if (telegramApiKey == null) {
@@ -16,9 +17,7 @@ const deeplTranslator = new DeepL.Translator(deeplApiKey);
 // catches up on messages when bot it turned back on. This automatically skips to most recent
 const resetURL = `https://api.telegram.org/bot${telegramApiKey}/getUpdates?offset=-1`;
 async function resetBot() {
-  const response = await fetch(resetURL);
-  const jsonData = await response.json();
-  console.log(jsonData);
+  await fetch(resetURL);
 }
 
 async function handleNewMessage(
@@ -68,7 +67,7 @@ function detectLanguage(message: string): "en" | "ru" | null {
   return null;
 }
 
-async function main() {
+async function botInit() {
   await resetBot();
   bot.on("message:text", async (context) => {
     const translatedMessage = await handleNewMessage(
@@ -77,6 +76,24 @@ async function main() {
     );
     context.reply(translatedMessage);
   });
+}
+
+function startServer() {
+  const app = express();
+
+  app.get("/", function (req, res) {
+    console.log("hit from outside");
+    res.send("hello");
+  });
+
+  const port = 3000;
+  app.listen(port);
+  console.log(`listening on port ${port}`);
+}
+
+function main() {
+  startServer();
+  botInit();
   bot.start();
 }
 
