@@ -1,7 +1,6 @@
 import { Bot } from "grammy";
 import * as DeepL from "deepl-node";
 import "dotenv/config";
-import express from "express";
 
 const telegramApiKey = process.env.TELEGRAM_API_KEY;
 if (telegramApiKey == null) {
@@ -78,21 +77,7 @@ async function botInit() {
   });
 }
 
-function startServer() {
-  const app = express();
-
-  app.get("/", function (req, res) {
-    console.log("hit from outside");
-    res.send("hello");
-  });
-
-  const port = 3000;
-  app.listen(port);
-  console.log(`listening on port ${port}`);
-}
-
 function main() {
-  startServer();
   botInit();
   bot.start();
 }
